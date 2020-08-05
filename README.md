@@ -239,3 +239,4 @@ Please report security vulnerability to [us](mailto:security@dubbo.apache.org) p
 ## License
 
 Apache Dubbo is under the Apache 2.0 license. See the [LICENSE](https://github.com/apache/dubbo/blob/master/LICENSE) file for details.
+# dubbo-2.7.7-note
