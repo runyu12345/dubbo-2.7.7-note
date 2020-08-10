@@ -84,29 +84,70 @@ public class ExtensionLoader<T> {
 
     private static final Pattern NAME_SEPARATOR = Pattern.compile("\\s*[,]+\\s*");
 
+    /**
+     * dubbo中一个扩展接口对应一个ExtensionLoader实例
+     * EXTENSION_LOADERS集合缓存了全部ExtensionLoader实例
+     * 其中: key为扩展接口, value为加载其扩展实现的ExtensionLoader实例
+     */
     private static final ConcurrentMap<Class<?>, ExtensionLoader<?>> EXTENSION_LOADERS = new ConcurrentHashMap<>(64);
 
+    /**
+     * EXTENSION_INSTANCES缓存了扩展实现类与其实例对象的映射关系
+     * 例如: 在dubbo-rpc模块中
+     * META-INF/dubbo/internal/目录下 -> org.apache.dubbo.rpc文件 ->
+     * key为class value为:DubboProtocol对象
+     */
     private static final ConcurrentMap<Class<?>, Object> EXTENSION_INSTANCES = new ConcurrentHashMap<>(64);
 
+    /**
+     * 当前ExtensionLoader实例负责加载扩展接口
+     */
     private final Class<?> type;
 
     private final ExtensionFactory objectFactory;
 
+    /**
+     * 缓存了ExtensionLoader加载实现类与扩展名之间的映射关系.
+     */
     private final ConcurrentMap<Class<?>, String> cachedNames = new ConcurrentHashMap<>();
 
+    /**
+     * 缓存了ExtensionLoader加载扩展名与扩展实现类之间的映射关系.  刚好与 cachedNames 相反
+     */
     private final Holder<Map<String, Class<?>>> cachedClasses = new Holder<>();
 
     private final Map<String, Object> cachedActivates = new ConcurrentHashMap<>();
+
+    /**
+     * 缓存了 ExtensionLoader 加载的扩展名与扩展实现对象之间的映射关系
+     */
     private final ConcurrentMap<String, Holder<Object>> cachedInstances = new ConcurrentHashMap<>();
     private final Holder<Object> cachedAdaptiveInstance = new Holder<>();
     private volatile Class<?> cachedAdaptiveClass = null;
+
+    /**
+     * 记录 type 这个接口上 @SPI注解的value值, 也就是默认扩展名
+     */
     private String cachedDefaultName;
+
     private volatile Throwable createAdaptiveInstanceError;
 
     private Set<Class<?>> cachedWrapperClasses;
 
     private Map<String, IllegalStateException> exceptions = new ConcurrentHashMap<>();
 
+    /**
+     * LoadingStrategy接口继承了Prioritized(优先级)接口
+     * LoadingStrategy接口有四个实现:
+     * 1. DubboExternalLoadingStrategy dubbo内部的SPI加载 directory: META-INF/dubbo/external/
+     * 2. DubboInternalLoadingStrategy dubbo内部的SPI加载 directory: META-INF/dubbo/internal/
+     * 3. DubboLoadingStrategy 用户自定义SPI配置文件加载 directory: META-INF/dubbo/
+     * 4. ServicesLoadingStrategy JDK的SPI加载 directory: META-INF/services/
+     *
+     * 暂时不考虑1(DubboExternalLoadingStrategy)的用处
+     * 通过getPriority可以确定加载优先级
+     * 加载顺序为: 2 -> 3 -> 4
+     */
     private static volatile LoadingStrategy[] strategies = loadLoadingStrategies();
 
     public static void setLoadingStrategies(LoadingStrategy... strategies) {
@@ -148,6 +189,12 @@ public class ExtensionLoader<T> {
         return type.isAnnotationPresent(SPI.class);
     }
 
+    /**
+     * 从 EXTENSION_LOADERS 中, 通过 type 找到相应的 ExtensionLoader 实例
+     * @param type
+     * @param <T>
+     * @return
+     */
     @SuppressWarnings("unchecked")
     public static <T> ExtensionLoader<T> getExtensionLoader(Class<T> type) {
         if (type == null) {
@@ -406,6 +453,9 @@ public class ExtensionLoader<T> {
     /**
      * Find the extension with the given name. If the specified name is not found, then {@link IllegalStateException}
      * will be thrown.
+     *
+     * 得到接口对应的ExtensionLoader对象之后,
+     * 调用其getExtension方法, 根据传入的扩展名称从 cachedInstances 缓存中查找扩展实现的实例.
      */
     @SuppressWarnings("unchecked")
     public T getExtension(String name) {
@@ -415,12 +465,15 @@ public class ExtensionLoader<T> {
         if ("true".equals(name)) {
             return getDefaultExtension();
         }
+        // 封装了查找 cachedInstances 缓存的逻辑. 如果有,直接返回; 如果没有, new Holder<>()然后返回.
         final Holder<Object> holder = getOrCreateHolder(name);
         Object instance = holder.get();
+        // 老套路, double-check 防止并发问题
         if (instance == null) {
             synchronized (holder) {
                 instance = holder.get();
                 if (instance == null) {
+                    // 通过扩展名从 SPI 配置文件中查找对应的扩展实现类
                     instance = createExtension(name);
                     holder.set(instance);
                 }
@@ -618,6 +671,12 @@ public class ExtensionLoader<T> {
         return new IllegalStateException(buf.toString());
     }
 
+
+    /**
+     *
+     * @param name
+     * @return
+     */
     @SuppressWarnings("unchecked")
     private T createExtension(String name) {
         Class<?> clazz = getExtensionClasses().get(name);
