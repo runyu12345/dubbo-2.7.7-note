@@ -79,19 +79,28 @@ public abstract class AbstractRegistry implements Registry {
     // Log output
     protected final Logger logger = LoggerFactory.getLogger(getClass());
     // Local disk cache, where the special key value.registries records the list of registry centers, and the others are the list of notified service providers
+    // 本地的 Properties 文件缓存, properties是加载到内存的 Properties 对象. file是磁盘上对应的文件. Properties和File的数据是同步的.
+    // properties的Key是当前节点作为consumer的一个URL, Value是对应的Provider列表,包含了所有的Category(例如: providers,routes,configurators)下的URL.
+    // properties中有一个特殊的Key值为 registies, 对应的value是注册中心列表, 其他记录的都是provider列表.
     private final Properties properties = new Properties();
+    // Local disk cache file
+    private File file;
     // File cache timing writing
     private final ExecutorService registryCacheExecutor = Executors.newFixedThreadPool(1, new NamedThreadFactory("DubboSaveRegistryCache", true));
     // Is it synchronized to save the file
     private boolean syncSaveFile;
+    // 注册数据的版本号, 每次写入file文件时都是全覆盖写入,所以需要版本控制, 防止旧数据覆盖新数据.
     private final AtomicLong lastCacheChanged = new AtomicLong();
     private final AtomicInteger savePropertiesRetryTimes = new AtomicInteger();
+    // 注册的URL集合
     private final Set<URL> registered = new ConcurrentHashSet<>();
+    // 订阅URL的监听器集合, Key是被监听的URL, Value是相应的监听器集合.
     private final ConcurrentMap<URL, Set<NotifyListener>> subscribed = new ConcurrentHashMap<>();
+    // 第一层Key是当前节点作为Consumer的第一个URL, 表示的是该节点的某个Consumer角色.(一个节点可以同时消费多个Provider节点)
+    // Value是一个Map集合, 该Map集合的Key是Provider URL的分类(Category), 例如: providers,routes,configurators等.Value就是响应分类下的URL集合.
     private final ConcurrentMap<URL, Map<String, List<URL>>> notified = new ConcurrentHashMap<>();
+    // 1. 包含了创建该Registry对象的全部配置信息, 是AbstractRegistryFactory修改后的产物
     private URL registryUrl;
-    // Local disk cache file
-    private File file;
 
     public AbstractRegistry(URL url) {
         setUrl(url);
@@ -406,10 +415,12 @@ public abstract class AbstractRegistry implements Registry {
         if (logger.isInfoEnabled()) {
             logger.info("Notify urls for subscribe url " + url + ", urls: " + urls);
         }
-        // keep every provider's category.
+        // keep every provider's .
         Map<String, List<URL>> result = new HashMap<>();
         for (URL u : urls) {
+            // Consumer URL 与 Provider URL 匹配.
             if (UrlUtils.isMatch(url, u)) {
+                // 根据 Provider URL中的category参数进行分类
                 String category = u.getParameter(CATEGORY_KEY, DEFAULT_CATEGORY);
                 List<URL> categoryList = result.computeIfAbsent(category, k -> new ArrayList<>());
                 categoryList.add(u);
@@ -422,10 +433,13 @@ public abstract class AbstractRegistry implements Registry {
         for (Map.Entry<String, List<URL>> entry : result.entrySet()) {
             String category = entry.getKey();
             List<URL> categoryList = entry.getValue();
+            // 更新 notified
             categoryNotified.put(category, categoryList);
+            // 调用 NotifyListener
             listener.notify(categoryList);
             // We will update our cache file after each notification.
             // When our Registry has a subscribe failure due to network jitter, we can return at least the existing cache URL.
+            // 更新properties集合以及底层的文件缓存
             saveProperties(url);
         }
     }

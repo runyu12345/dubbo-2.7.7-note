@@ -390,22 +390,27 @@ public class UrlUtils {
         }
     }
 
+    /**
+     * 匹配 consumer和provider接口,(优先取 interface参数, 其次再取 path) 双方接口相同或者其中一方为 * , 则匹配成功, 执行下一步.
+     * 匹配 consumer和provider的category
+     * 检测 consumer URL和 Provider URL中的 enable 参数是否符合条件
+     * 检测 consumer 和 provider 端的 group, version,以及classifier是否符合条件
+     * @param consumerUrl consumer端的 URL
+     * @param providerUrl provider端的 URL
+     * @return
+     */
     public static boolean isMatch(URL consumerUrl, URL providerUrl) {
         String consumerInterface = consumerUrl.getServiceInterface();
         String providerInterface = providerUrl.getServiceInterface();
         //FIXME accept providerUrl with '*' as interface name, after carefully thought about all possible scenarios I think it's ok to add this condition.
-        if (!(ANY_VALUE.equals(consumerInterface)
-                || ANY_VALUE.equals(providerInterface)
-                || StringUtils.isEquals(consumerInterface, providerInterface))) {
+        if (!(ANY_VALUE.equals(consumerInterface) || ANY_VALUE.equals(providerInterface) || StringUtils.isEquals(consumerInterface, providerInterface))) {
             return false;
         }
 
-        if (!isMatchCategory(providerUrl.getParameter(CATEGORY_KEY, DEFAULT_CATEGORY),
-                consumerUrl.getParameter(CATEGORY_KEY, DEFAULT_CATEGORY))) {
+        if (!isMatchCategory(providerUrl.getParameter(CATEGORY_KEY, DEFAULT_CATEGORY), consumerUrl.getParameter(CATEGORY_KEY, DEFAULT_CATEGORY))) {
             return false;
         }
-        if (!providerUrl.getParameter(ENABLED_KEY, true)
-                && !ANY_VALUE.equals(consumerUrl.getParameter(ENABLED_KEY))) {
+        if (!providerUrl.getParameter(ENABLED_KEY, true) && !ANY_VALUE.equals(consumerUrl.getParameter(ENABLED_KEY))) {
             return false;
         }
 
